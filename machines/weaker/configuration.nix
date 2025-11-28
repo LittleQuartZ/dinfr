@@ -14,13 +14,14 @@
   services.openssh.enable = true;
   services.openssh.settings.PermitRootLogin = "prohibit-password";
 
+  networking.hostName = "weaker";
   networking.firewall.enable = false;
   networking = {
     interfaces.ens18.ipv4.addresses = [{
       address = "10.26.11.192";
       prefixLength = 24;
     }];
-    defaultGateway = "10.26.11.97";
+    defaultGateway = { address = "10.26.11.97"; interface = "ens18"; };
     nameservers = [ "1.1.1.1" "8.8.8.8" ];
   };
 }
