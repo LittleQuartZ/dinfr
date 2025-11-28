@@ -15,6 +15,7 @@
         inherit self;
         imports = [ ./clan.nix ];
         specialArgs = { inherit inputs; };
+        modules."@littlequartz/tailscale" = ./modules/tailscale/default.nix;
       };
     in
     {
