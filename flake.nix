@@ -1,6 +1,7 @@
 {
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
   inputs.clan-core.url = "https://git.clan.lol/clan/clan-core/archive/main.tar.gz";
-  inputs.nixpkgs.follows = "clan-core/nixpkgs";
+  inputs.clan-core.inputs.nixpkgs.follows = "nixpkgs";
 
   outputs =
     {
@@ -31,7 +32,8 @@
             "aarch64-darwin"
             "x86_64-darwin"
           ]
-          (system:
+          (
+            system:
             let
               pkgs = clan-core.inputs.nixpkgs.legacyPackages.${system};
             in
@@ -41,8 +43,10 @@
                   clan-core.packages.${system}.clan-cli
                   pkgs.nixd
                   pkgs.nil
+                  pkgs.nixfmt-rfc-style
                 ];
               };
-            });
+            }
+          );
     };
 }

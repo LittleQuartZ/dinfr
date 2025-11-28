@@ -21,7 +21,8 @@
         # Insert the public key that you want to use for SSH access.
         # All keys will have ssh access to all machines ("tags.all" means 'all machines').
         # Alternatively set 'users.users.root.openssh.authorizedKeys.keys' in each machine
-        "twurbo" = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILRFTvICtbBKC7UwKfyEAzDFi7FLSa5s9wGqckVOLlsU dan@twurbo.local";
+        "twurbo" =
+          "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILRFTvICtbBKC7UwKfyEAzDFi7FLSa5s9wGqckVOLlsU dan@twurbo.local";
       };
     };
 
