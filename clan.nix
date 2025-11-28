@@ -1,11 +1,12 @@
 {
   # Ensure this is unique among all clans you want to use.
-  meta.name = "__CHANGE_ME__";
-  meta.domain = "changeme";
+  meta.name = "dinfra";
+  meta.domain = "littlequartz";
+  meta.description = "Dan's Personal Infra";
 
   inventory.machines = {
     # Define machines here.
-    # jon = { };
+    weaker = { };
   };
 
   # Docs: See https://docs.clan.lol/reference/clanServices
@@ -20,7 +21,7 @@
         # Insert the public key that you want to use for SSH access.
         # All keys will have ssh access to all machines ("tags.all" means 'all machines').
         # Alternatively set 'users.users.root.openssh.authorizedKeys.keys' in each machine
-        "admin-machine-1" = "__YOUR_PUBLIC_KEY__";
+        "twurbo" = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILRFTvICtbBKC7UwKfyEAzDFi7FLSa5s9wGqckVOLlsU dan@twurbo.local";
       };
     };
 
@@ -48,11 +49,9 @@
   };
 
   # Additional NixOS configuration can be added here.
-  # machines/jon/configuration.nix will be automatically imported.
+  # machines/weaker/configuration.nix will be automatically imported.
   # See: https://docs.clan.lol/guides/more-machines/#automatic-registration
   machines = {
-    # jon = { config, ... }: {
-    #   environment.systemPackages = [ pkgs.asciinema ];
-    # };
+    weaker = { };
   };
 }
