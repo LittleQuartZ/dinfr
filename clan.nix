@@ -11,6 +11,20 @@
 
   # Docs: See https://docs.clan.lol/reference/clanServices
   inventory.instances = {
+    dan-user = {
+      module.name = "users";
+
+      roles.default.tags.all = { };
+      roles.default.settings = {
+        user = "dan";
+        groups = [
+          "wheel"
+          "networkmanager"
+        ];
+      };
+
+      roles.default.extraModules = [ ./users/dan ];
+    };
 
     # Docs: https://docs.clan.lol/reference/clanServices/admin/
     # Admin service for managing machines
