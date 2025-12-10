@@ -53,6 +53,27 @@
 
       roles.client.machines.weaker = { };
     };
+
+    "@littlequartz/redis" = {
+      module.input = "self";
+      module.name = "@littlequartz/redis";
+
+      roles.server.machines.weaker.settings = {
+        bindAddress = "100.118.165.68";
+        port = 6379;
+      };
+    };
+
+    "@littlequartz/traefik" = {
+      module.input = "self";
+      module.name = "@littlequartz/traefik";
+
+      roles.server.machines.weaker.settings = {
+        acmeEmail = "syahdanhafizzz@gmail.com";
+        redisEndpoint = "100.118.165.68:6379";
+        enableApi = true;
+      };
+    };
   };
 
   # Additional NixOS configuration can be added here.

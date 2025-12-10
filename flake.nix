@@ -21,6 +21,8 @@
         imports = [ ./clan.nix ];
         specialArgs = { inherit inputs; };
         modules."@littlequartz/tailscale" = ./modules/tailscale/default.nix;
+        modules."@littlequartz/redis" = ./modules/redis/default.nix;
+        modules."@littlequartz/traefik" = ./modules/traefik/default.nix;
       };
     in
     {
