@@ -7,6 +7,7 @@
   inventory.machines = {
     # Define machines here.
     weaker = { };
+    dangc = { };
   };
 
   # Docs: See https://docs.clan.lol/reference/clanServices
@@ -52,6 +53,7 @@
       module.name = "@littlequartz/tailscale";
 
       roles.client.machines.weaker = { };
+      roles.client.machines.dangc = { };
     };
 
     "@littlequartz/redis" = {
@@ -59,14 +61,14 @@
       module.name = "@littlequartz/redis";
 
       # Binds to 0.0.0.0, firewall restricts to tailscale0 only
-      roles.server.machines.weaker = { };
+      roles.server.machines.dangc = { };
     };
 
     "@littlequartz/traefik" = {
       module.input = "self";
       module.name = "@littlequartz/traefik";
 
-      roles.server.machines.weaker.settings = {
+      roles.server.machines.dangc.settings = {
         acmeEmail = "syahdanhafizzz@gmail.com";
         # Redis on localhost since both services on same machine
         redisEndpoint = "127.0.0.1:6379";
@@ -80,5 +82,6 @@
   # See: https://docs.clan.lol/guides/more-machines/#automatic-registration
   machines = {
     weaker = { };
+    dangc = { };
   };
 }
