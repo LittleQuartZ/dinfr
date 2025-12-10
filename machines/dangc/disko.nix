@@ -1,7 +1,7 @@
 # ---
 # schema = "single-disk"
 # [placeholders]
-# mainDisk = "/dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_drive-scsi3-0-0-2" 
+# mainDisk = "/dev/disk/by-path/pci-0000:00:07.0" 
 # ---
 # This file was automatically generated!
 # CHANGING this configuration requires wiping and reinstalling the machine
@@ -13,8 +13,8 @@
   disko.devices = {
     disk = {
       main = {
-        name = "main-30d3723a665c486d84ceb6830a5d7fa7";
-        device = "/dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_drive-scsi3-0-0-2";
+        name = "main-66c8e6b28bf744eaad08230d034c391b";
+        device = "/dev/disk/by-path/pci-0000:00:07.0";
         type = "disk";
         content = {
           type = "gpt";
