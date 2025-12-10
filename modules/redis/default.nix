@@ -14,9 +14,9 @@
       { lib, ... }:
       {
         options.bindAddress = lib.mkOption {
-          type = lib.types.str;
-          default = "100.118.165.68";
-          description = "IP address to bind Redis to (Tailscale IP for traefik-kop)";
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "IP address to bind Redis to. If null, binds to 0.0.0.0 (firewall restricts to tailscale0).";
         };
 
         options.port = lib.mkOption {
@@ -30,10 +30,15 @@
       {
         nixosModule =
           { config, pkgs, ... }:
+          let
+            # Bind to specific IP if provided, otherwise 0.0.0.0
+            # Security is enforced by firewall allowing only tailscale0
+            bindAddr = if settings.bindAddress != null then settings.bindAddress else "0.0.0.0";
+          in
           {
             services.redis.servers.traefik-kop = {
               enable = true;
-              bind = settings.bindAddress;
+              bind = bindAddr;
               port = settings.port;
               # Persistence for traefik-kop state
               save = [
@@ -43,7 +48,9 @@
               ];
             };
 
-            # Allow Redis on Tailscale interface
+            # IMPORTANT: Only allow Redis on Tailscale interface
+            # This is the security boundary - Redis binds 0.0.0.0 but only
+            # tailscale0 can reach it
             networking.firewall.interfaces.tailscale0 = {
               allowedTCPPorts = [ settings.port ];
             };

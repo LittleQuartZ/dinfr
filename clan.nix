@@ -58,10 +58,8 @@
       module.input = "self";
       module.name = "@littlequartz/redis";
 
-      roles.server.machines.weaker.settings = {
-        bindAddress = "100.118.165.68";
-        port = 6379;
-      };
+      # Binds to 0.0.0.0, firewall restricts to tailscale0 only
+      roles.server.machines.weaker = { };
     };
 
     "@littlequartz/traefik" = {
@@ -70,7 +68,8 @@
 
       roles.server.machines.weaker.settings = {
         acmeEmail = "syahdanhafizzz@gmail.com";
-        redisEndpoint = "100.118.165.68:6379";
+        # Redis on localhost since both services on same machine
+        redisEndpoint = "127.0.0.1:6379";
         enableApi = true;
       };
     };
