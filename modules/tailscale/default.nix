@@ -43,11 +43,11 @@
               prompts = {
                 authKey = {
                   type = "line";
-                  description = "Tailscale auth key (tskey-auth-xyz)";
+                  description = "Tailscale/Headscale auth key (tskey-auth-xyz or headscale preauthkey)";
                   display = {
                     label = "Tailscale Auth Key";
                     required = true;
-                    helperText = "You can create an auth key from the Tailscale admin console or your headscale instance.";
+                    helperText = "Create from Tailscale admin console, or for Headscale: headscale preauthkeys create --user <username>";
                   };
                   persist = true;
                 };
@@ -68,6 +68,247 @@
 
             networking.firewall.checkReversePath = "loose";
             networking.firewall.trustedInterfaces = [ "tailscale0" ];
+
+          };
+      };
+  };
+
+  roles.server = {
+    description = "Headscale coordination server - self-hosted Tailscale control plane";
+    interface =
+      { lib, ... }:
+      {
+        options.serverUrl = lib.mkOption {
+          type = lib.types.str;
+          description = "Public URL where Headscale will be accessible (e.g., https://headscale.example.com)";
+          example = "https://headscale.example.com";
+        };
+
+        options.baseDomain = lib.mkOption {
+          type = lib.types.str;
+          description = "Base domain for MagicDNS (e.g., example.com results in machine.user.example.com)";
+          example = "example.com";
+        };
+
+        options.acmeEmail = lib.mkOption {
+          type = lib.types.str;
+          description = "Email for ACME/Let's Encrypt certificate notifications";
+        };
+
+        options.ipPrefixes = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [
+            "100.64.0.0/10"
+            "fd7a:115c:a1e0::/48"
+          ];
+          description = "IP prefixes to allocate addresses from (IPv4 and IPv6)";
+        };
+
+        options.dns = {
+          nameservers = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [
+              "1.1.1.1"
+              "8.8.8.8"
+            ];
+            description = "DNS servers to use for MagicDNS";
+          };
+
+          magicDns = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Enable MagicDNS for automatic DNS resolution within the tailnet";
+          };
+        };
+
+        options.derp = {
+          serverEnabled = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Run embedded DERP relay server";
+          };
+
+          serverRegionId = lib.mkOption {
+            type = lib.types.int;
+            default = 999;
+            description = "Region ID for the embedded DERP server";
+          };
+
+          serverRegionName = lib.mkOption {
+            type = lib.types.str;
+            default = "headscale";
+            description = "Region name for the embedded DERP server";
+          };
+
+          serverStunEnabled = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Enable STUN for the embedded DERP server";
+          };
+        };
+
+        options.oidc = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Enable OIDC authentication";
+          };
+
+          issuer = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+            description = "OIDC issuer URL";
+          };
+
+          clientId = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+            description = "OIDC client ID";
+          };
+
+          scope = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [
+              "openid"
+              "profile"
+              "email"
+            ];
+            description = "OIDC scopes to request";
+          };
+        };
+
+        options.aclPolicyFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.path;
+          default = null;
+          description = "Path to ACL policy file (HuJSON format)";
+        };
+
+        options.openFirewall = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Open firewall ports for Headscale (443 for HTTPS, 3478 for STUN if DERP enabled)";
+        };
+      };
+    perInstance =
+      { settings, ... }:
+      {
+        nixosModule =
+          { config, pkgs, ... }:
+          let
+            serverUrlParsed = builtins.elemAt (builtins.match "https?://([^/:]+).*" settings.serverUrl) 0;
+          in
+          {
+            # OIDC client secret generator (only if OIDC enabled)
+            clan.core.vars.generators.headscale = lib.mkIf settings.oidc.enable {
+              prompts = {
+                oidcClientSecret = {
+                  type = "line";
+                  description = "OIDC client secret for Headscale authentication";
+                  display = {
+                    label = "OIDC Client Secret";
+                    required = true;
+                    helperText = "Client secret from your OIDC provider";
+                  };
+                  persist = true;
+                };
+              };
+            };
+
+            services.headscale = {
+              enable = true;
+              package = pkgs.headscale;
+
+              settings = {
+                server_url = settings.serverUrl;
+
+                listen_addr = "127.0.0.1:8080";
+                metrics_listen_addr = "127.0.0.1:9090";
+                grpc_listen_addr = "127.0.0.1:50443";
+                grpc_allow_insecure = false;
+
+                prefixes = {
+                  v4 = builtins.head (builtins.filter (p: builtins.match ".*:.*" p == null) settings.ipPrefixes);
+                  v6 = builtins.head (builtins.filter (p: builtins.match ".*:.*" p != null) settings.ipPrefixes);
+                };
+
+                derp = {
+                  server = {
+                    enabled = settings.derp.serverEnabled;
+                    region_id = settings.derp.serverRegionId;
+                    region_code = "hs";
+                    region_name = settings.derp.serverRegionName;
+                    stun_listen_addr = "0.0.0.0:3478";
+                  };
+                  urls = lib.mkIf (!settings.derp.serverEnabled) [
+                    "https://controlplane.tailscale.com/derpmap/default"
+                  ];
+                  auto_update_enabled = true;
+                  update_frequency = "24h";
+                };
+
+                dns = {
+                  base_domain = settings.baseDomain;
+                  magic_dns = settings.dns.magicDns;
+                  nameservers.global = settings.dns.nameservers;
+                };
+
+                database = {
+                  type = "sqlite";
+                  sqlite.path = "/var/lib/headscale/db.sqlite";
+                };
+
+                log = {
+                  format = "json";
+                  level = "info";
+                };
+
+                policy = lib.mkIf (settings.aclPolicyFile != null) {
+                  path = settings.aclPolicyFile;
+                };
+
+                oidc = lib.mkIf settings.oidc.enable {
+                  issuer = settings.oidc.issuer;
+                  client_id = settings.oidc.clientId;
+                  client_secret_path = config.clan.core.vars.generators.headscale.files.oidcClientSecret.path;
+                  scope = settings.oidc.scope;
+                };
+              };
+            };
+
+            # Nginx reverse proxy with ACME TLS
+            services.nginx = {
+              enable = true;
+              recommendedProxySettings = true;
+              recommendedTlsSettings = true;
+
+              virtualHosts.${serverUrlParsed} = {
+                enableACME = true;
+                forceSSL = true;
+
+                locations."/" = {
+                  proxyPass = "http://127.0.0.1:8080";
+                  proxyWebsockets = true;
+                  extraConfig = ''
+                    proxy_buffering off;
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
+                  '';
+                };
+              };
+            };
+
+            security.acme = {
+              acceptTerms = true;
+              defaults.email = settings.acmeEmail;
+            };
+
+            # Firewall
+            networking.firewall = lib.mkIf settings.openFirewall {
+              allowedTCPPorts = [ 80 443 ];
+              allowedUDPPorts = lib.mkIf settings.derp.serverEnabled [ 3478 ];
+            };
 
           };
       };
