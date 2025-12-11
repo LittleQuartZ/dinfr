@@ -47,8 +47,10 @@
               serviceConfig = {
                 Type = "oneshot";
                 RemainAfterExit = true;
-                ExecStart = "${pkgs.docker}/bin/docker network create traefik_proxy || true";
               };
+              script = ''
+                ${pkgs.docker}/bin/docker network create traefik_proxy || true
+              '';
             };
 
             # Traefik container
