@@ -5,6 +5,8 @@
     clan-core.inputs.nixpkgs.follows = "nixpkgs";
     home-manager.url = "github:nix-community/home-manager";
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
+    headplane.url = "github:tale/headplane";
+    headplane.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
