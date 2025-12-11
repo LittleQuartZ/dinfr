@@ -35,6 +35,45 @@
           default = true;
           description = "Enable Docker provider for container discovery";
         };
+
+        options.routers = lib.mkOption {
+          type = lib.types.attrsOf lib.types.attrs;
+          default = {};
+          description = "HTTP routers configuration (dynamicConfigOptions.http.routers)";
+          example = {
+            myapp = {
+              rule = "Host(`myapp.example.com`)";
+              service = "myapp";
+              entryPoints = [ "websecure" ];
+            };
+          };
+        };
+
+        options.services = lib.mkOption {
+          type = lib.types.attrsOf lib.types.attrs;
+          default = {};
+          description = "HTTP services configuration (dynamicConfigOptions.http.services)";
+          example = {
+            myapp.loadBalancer.servers = [
+              { url = "http://localhost:8080"; }
+            ];
+          };
+        };
+
+        options.middlewares = lib.mkOption {
+          type = lib.types.attrsOf lib.types.attrs;
+          default = {};
+          description = "HTTP middlewares configuration (dynamicConfigOptions.http.middlewares)";
+          example = {
+            auth.basicAuth.users = [ "user:$$apr1$$..." ];
+          };
+        };
+
+        options.extraDynamicConfig = lib.mkOption {
+          type = lib.types.attrs;
+          default = {};
+          description = "Extra dynamic config merged into dynamicConfigOptions (escape hatch)";
+        };
       };
     perInstance =
       { settings, ... }:
@@ -103,11 +142,14 @@
                 };
               };
 
-              dynamicConfigOptions = {
-                # Dynamic config can be added here or via Redis
-                http.routers = {};
-                http.services = {};
-              };
+              dynamicConfigOptions = lib.mkMerge [
+                {
+                  http.routers = settings.routers;
+                  http.services = settings.services;
+                  http.middlewares = settings.middlewares;
+                }
+                settings.extraDynamicConfig
+              ];
             };
 
             # Open firewall ports
