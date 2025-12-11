@@ -92,7 +92,13 @@
 
         options.acmeEmail = lib.mkOption {
           type = lib.types.str;
-          description = "Email for ACME/Let's Encrypt certificate notifications";
+          description = "Email for ACME/Let's Encrypt certificate notifications (only used when useTraefik=false)";
+        };
+
+        options.useTraefik = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Use Traefik for reverse proxy and TLS (if false, falls back to nginx with ACME)";
         };
 
         options.ipPrefixes = lib.mkOption {
@@ -183,22 +189,75 @@
           description = "Path to ACL policy file (HuJSON format)";
         };
 
+        options.headplane = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Enable Headplane UI for Headscale management";
+          };
+
+          port = lib.mkOption {
+            type = lib.types.int;
+            default = 3000;
+            description = "Port for Headplane to listen on";
+          };
+
+          domain = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Domain for Headplane (optional, for Traefik routing if different from serverUrl)";
+          };
+
+          agent = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Enable Headplane agent integration for node management";
+            };
+          };
+
+          oidc = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Enable OIDC authentication for Headplane";
+            };
+
+            issuer = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "OIDC issuer URL for Headplane";
+            };
+
+            clientId = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "OIDC client ID for Headplane";
+            };
+          };
+        };
+
         options.openFirewall = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Open firewall ports for Headscale (443 for HTTPS, 3478 for STUN if DERP enabled)";
+          description = "Open firewall ports for Headscale (3478 UDP for STUN if DERP enabled, 80/443 TCP only when useTraefik=false)";
         };
       };
     perInstance =
       { settings, ... }:
       {
         nixosModule =
-          { config, pkgs, ... }:
+          {
+            config,
+            pkgs,
+            inputs,
+            ...
+          }:
           let
             serverUrlParsed = builtins.elemAt (builtins.match "https?://([^/:]+).*" settings.serverUrl) 0;
           in
           {
-            # OIDC client secret generator (only if OIDC enabled)
+            # Headscale OIDC client secret generator (only if OIDC enabled)
             clan.core.vars.generators.headscale = lib.mkIf settings.oidc.enable {
               prompts = {
                 oidcClientSecret = {
@@ -208,6 +267,42 @@
                     label = "OIDC Client Secret";
                     required = true;
                     helperText = "Client secret from your OIDC provider";
+                  };
+                  persist = true;
+                };
+              };
+            };
+
+            # Headplane generators (only if headplane enabled)
+            clan.core.vars.generators.headplane = lib.mkIf settings.headplane.enable {
+              prompts = {
+                cookieSecret = {
+                  type = "line";
+                  description = "Headplane session cookie secret (32 characters)";
+                  display = {
+                    label = "Cookie Secret";
+                    required = true;
+                    helperText = "Used for session encryption - generate with: head -c 32 /dev/urandom | base64";
+                  };
+                  persist = true;
+                };
+                oidcClientSecret = lib.mkIf settings.headplane.oidc.enable {
+                  type = "line";
+                  description = "OIDC client secret for Headplane";
+                  display = {
+                    label = "OIDC Client Secret";
+                    required = true;
+                    helperText = "Client secret from your OIDC provider";
+                  };
+                  persist = true;
+                };
+                agentPreauthKey = lib.mkIf settings.headplane.agent.enable {
+                  type = "line";
+                  description = "Headscale pre-auth key for Headplane agent";
+                  display = {
+                    label = "Agent Pre-Auth Key";
+                    required = true;
+                    helperText = "Create with: headscale preauthkeys create --user admin --reusable --expiration=8760h";
                   };
                   persist = true;
                 };
@@ -275,8 +370,37 @@
               };
             };
 
-            # Nginx reverse proxy with ACME TLS
-            services.nginx = {
+            # Headplane UI
+            services.headplane = lib.mkIf settings.headplane.enable {
+              enable = true;
+              settings = {
+                server = {
+                  host = "127.0.0.1";
+                  port = settings.headplane.port;
+                  cookie_secret_path = config.clan.core.vars.generators.headplane.files.cookieSecret.path;
+                };
+                headscale = {
+                  url = "http://127.0.0.1:8080";
+                  config_path = config.services.headscale.settings;
+                };
+                integration = {
+                  proc.enabled = true;
+                  agent = lib.mkIf settings.headplane.agent.enable {
+                    enabled = true;
+                    pre_authkey_path = config.clan.core.vars.generators.headplane.files.agentPreauthKey.path;
+                  };
+                };
+                oidc = lib.mkIf settings.headplane.oidc.enable {
+                  issuer = settings.headplane.oidc.issuer;
+                  client_id = settings.headplane.oidc.clientId;
+                  client_secret_path = config.clan.core.vars.generators.headplane.files.oidcClientSecret.path;
+                  redirect_uri = "${settings.serverUrl}/admin/oidc/callback";
+                };
+              };
+            };
+
+            # Nginx reverse proxy with ACME TLS (only when not using Traefik)
+            services.nginx = lib.mkIf (!settings.useTraefik) {
               enable = true;
               recommendedProxySettings = true;
               recommendedTlsSettings = true;
@@ -299,16 +423,37 @@
               };
             };
 
-            security.acme = {
+            # ACME/TLS (only when not using Traefik)
+            security.acme = lib.mkIf (!settings.useTraefik) {
               acceptTerms = true;
               defaults.email = settings.acmeEmail;
             };
 
             # Firewall
-            networking.firewall = lib.mkIf settings.openFirewall {
-              allowedTCPPorts = [ 80 443 ];
-              allowedUDPPorts = lib.mkIf settings.derp.serverEnabled [ 3478 ];
-            };
+            # When using Traefik: only open 3478 UDP for DERP STUN
+            # When not using Traefik: open 80/443 TCP and 3478 UDP for DERP STUN
+            networking.firewall = lib.mkIf settings.openFirewall (
+              if settings.useTraefik then
+                {
+                  allowedUDPPorts = lib.mkIf settings.derp.serverEnabled [ 3478 ];
+                }
+              else
+                {
+                  allowedTCPPorts = [
+                    80
+                    443
+                  ];
+                  allowedUDPPorts = lib.mkIf settings.derp.serverEnabled [ 3478 ];
+                }
+            );
+
+            # Assertion: document Traefik configuration requirement
+            assertions = [
+              {
+                assertion = !settings.useTraefik || builtins.hasAttr "@littlequartz/traefik" config.services;
+                message = "When useTraefik=true, you must configure the Traefik module (modules/@littlequartz/traefik) with routers and services for Headscale. Example: traefik.roles.server.routers.headscale = { rule = \"Host(`${serverUrlParsed}`)\"; service = \"headscale\"; entryPoints = [\"websecure\"]; }; and traefik.roles.server.services.headscale.loadBalancer.servers = [{ url = \"http://127.0.0.1:8080\"; }];";
+              }
+            ];
 
           };
       };
