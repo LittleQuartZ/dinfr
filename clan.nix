@@ -73,6 +73,7 @@
         # Redis on localhost since both services on same machine
         redisEndpoint = "127.0.0.1:6379";
         enableApi = true;
+        enableDocker = true;
       };
     };
   };

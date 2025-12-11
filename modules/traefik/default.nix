@@ -38,7 +38,7 @@
 
         options.routers = lib.mkOption {
           type = lib.types.attrsOf lib.types.attrs;
-          default = {};
+          default = { };
           description = "HTTP routers configuration (dynamicConfigOptions.http.routers)";
           example = {
             myapp = {
@@ -51,7 +51,7 @@
 
         options.services = lib.mkOption {
           type = lib.types.attrsOf lib.types.attrs;
-          default = {};
+          default = { };
           description = "HTTP services configuration (dynamicConfigOptions.http.services)";
           example = {
             myapp.loadBalancer.servers = [
@@ -62,7 +62,7 @@
 
         options.middlewares = lib.mkOption {
           type = lib.types.attrsOf lib.types.attrs;
-          default = {};
+          default = { };
           description = "HTTP middlewares configuration (dynamicConfigOptions.http.middlewares)";
           example = {
             auth.basicAuth.users = [ "user:$$apr1$$..." ];
@@ -71,7 +71,7 @@
 
         options.extraDynamicConfig = lib.mkOption {
           type = lib.types.attrs;
-          default = {};
+          default = { };
           description = "Extra dynamic config merged into dynamicConfigOptions (escape hatch)";
         };
       };
@@ -79,7 +79,7 @@
       { settings, ... }:
       {
         nixosModule =
-          { config, pkgs, ... }:
+          { config, ... }:
           {
             # Enable Docker if Docker provider is used
             virtualisation.docker.enable = lib.mkIf settings.enableDocker true;
@@ -102,15 +102,15 @@
                   };
                   websecure = {
                     address = ":443";
-                    http.tls.certResolver = "letsencrypt";
+                    http.tls.certResolver = "myresolver";
                   };
                 };
 
                 # ACME/Let's Encrypt
-                certificatesResolvers.letsencrypt.acme = {
+                certificatesResolvers.myresolver.acme = {
                   email = settings.acmeEmail;
                   storage = "${config.services.traefik.dataDir}/acme.json";
-                  tlsChallenge = {};
+                  tlsChallenge = { };
                 };
 
                 # Providers
@@ -124,7 +124,7 @@
 
                   # Redis provider for traefik-kop
                   redis = {
-                    endpoints = [ settings.redisEndpoint ];
+                    endpoints = settings.redisEndpoint;
                   };
                 };
 
@@ -153,7 +153,10 @@
             };
 
             # Open firewall ports
-            networking.firewall.allowedTCPPorts = [ 80 443 ];
+            networking.firewall.allowedTCPPorts = [
+              80
+              443
+            ];
           };
       };
   };
