@@ -20,14 +20,20 @@
 
         options.redisEndpoint = lib.mkOption {
           type = lib.types.str;
-          default = "100.118.165.68:6379";
-          description = "Redis endpoint for traefik-kop (Tailscale IP:port)";
+          default = "127.0.0.1:6379";
+          description = "Redis endpoint for traefik-kop";
         };
 
         options.enableApi = lib.mkOption {
           type = lib.types.bool;
           default = true;
           description = "Enable Traefik API/dashboard";
+        };
+
+        options.enableDocker = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable Docker provider for container discovery";
         };
       };
     perInstance =
@@ -36,70 +42,76 @@
         nixosModule =
           { config, pkgs, ... }:
           {
-            # Enable Docker for Traefik provider
-            virtualisation.docker.enable = true;
+            # Enable Docker if Docker provider is used
+            virtualisation.docker.enable = lib.mkIf settings.enableDocker true;
 
-            # Create traefik_proxy network
-            systemd.services.docker-network-traefik_proxy = {
-              description = "Create traefik_proxy Docker network";
-              after = [ "docker.service" ];
-              wantedBy = [ "multi-user.target" ];
-              serviceConfig = {
-                Type = "oneshot";
-                RemainAfterExit = true;
+            # Add traefik user to docker group for socket access
+            users.users.traefik.extraGroups = lib.mkIf settings.enableDocker [ "docker" ];
+
+            services.traefik = {
+              enable = true;
+
+              staticConfigOptions = {
+                # Entry points
+                entryPoints = {
+                  web = {
+                    address = ":80";
+                    http.redirections.entrypoint = {
+                      to = "websecure";
+                      scheme = "https";
+                    };
+                  };
+                  websecure = {
+                    address = ":443";
+                    http.tls.certResolver = "letsencrypt";
+                  };
+                };
+
+                # ACME/Let's Encrypt
+                certificatesResolvers.letsencrypt.acme = {
+                  email = settings.acmeEmail;
+                  storage = "${config.services.traefik.dataDir}/acme.json";
+                  tlsChallenge = {};
+                };
+
+                # Providers
+                providers = {
+                  # Docker provider
+                  docker = lib.mkIf settings.enableDocker {
+                    endpoint = "unix:///var/run/docker.sock";
+                    watch = true;
+                    exposedByDefault = false;
+                  };
+
+                  # Redis provider for traefik-kop
+                  redis = {
+                    endpoints = [ settings.redisEndpoint ];
+                  };
+                };
+
+                # API/Dashboard
+                api = {
+                  dashboard = settings.enableApi;
+                  # insecure = true; # Uncomment to access dashboard on :8080
+                };
+
+                # Logging
+                log = {
+                  level = "INFO";
+                  filePath = "${config.services.traefik.dataDir}/traefik.log";
+                  format = "json";
+                };
               };
-              script = ''
-                ${pkgs.docker}/bin/docker network create traefik_proxy || true
-              '';
+
+              dynamicConfigOptions = {
+                # Dynamic config can be added here or via Redis
+                http.routers = {};
+                http.services = {};
+              };
             };
-
-            # Traefik container
-            virtualisation.oci-containers.backend = "docker";
-            virtualisation.oci-containers.containers.traefik = {
-              image = "traefik:v3.3";
-              autoStart = true;
-
-              cmd = [
-                "--api=${lib.boolToString settings.enableApi}"
-                "--providers.docker"
-                "--providers.docker.watch=true"
-                "--providers.docker.exposedbydefault=false"
-                "--providers.redis.endpoints=${settings.redisEndpoint}"
-                "--entryPoints.websecure.address=:443"
-                "--entryPoints.web.address=:80"
-                "--entryPoints.web.http.redirections.entryPoint.to=websecure"
-                "--entryPoints.web.http.redirections.entryPoint.scheme=https"
-                "--certificatesresolvers.myresolver.acme.tlschallenge=true"
-                "--certificatesresolvers.myresolver.acme.email=${settings.acmeEmail}"
-                "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-              ];
-
-              ports = [
-                "80:80"
-                "443:443"
-              ];
-
-              volumes = [
-                "/var/run/docker.sock:/var/run/docker.sock:ro"
-                "/var/lib/traefik/letsencrypt:/letsencrypt"
-              ];
-
-              extraOptions = [
-                "--network=traefik_proxy"
-                "--network=bridge"
-              ];
-            };
-
-            # Ensure letsencrypt directory exists with correct permissions
-            systemd.tmpfiles.rules = [
-              "d /var/lib/traefik/letsencrypt 0700 root root -"
-            ];
 
             # Open firewall ports
-            networking.firewall.allowedTCPPorts = [
-              80
-              443
-            ];
+            networking.firewall.allowedTCPPorts = [ 80 443 ];
           };
       };
   };
