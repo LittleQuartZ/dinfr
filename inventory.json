@@ -2,6 +2,9 @@
   "machines": {
     "weaker": {
       "installedAt": 1764331561
+    },
+    "dangc": {
+      "installedAt": 1765431413
     }
   }
 }
