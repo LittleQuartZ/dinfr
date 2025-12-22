@@ -90,15 +90,10 @@
           example = "example.com";
         };
 
-        options.acmeEmail = lib.mkOption {
-          type = lib.types.str;
-          description = "Email for ACME/Let's Encrypt certificate notifications (only used when useTraefik=false)";
-        };
-
         options.useTraefik = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Use Traefik for reverse proxy and TLS (if false, falls back to nginx with ACME)";
+          description = "If true, assumes Traefik handles TLS (only opens STUN port). If false, opens ports 80/443 directly.";
         };
 
         options.ipPrefixes = lib.mkOption {
@@ -144,12 +139,6 @@
             type = lib.types.str;
             default = "headscale";
             description = "Region name for the embedded DERP server";
-          };
-
-          serverStunEnabled = lib.mkOption {
-            type = lib.types.bool;
-            default = true;
-            description = "Enable STUN for the embedded DERP server";
           };
         };
 
@@ -202,12 +191,6 @@
             description = "Port for Headplane to listen on";
           };
 
-          domain = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Domain for Headplane (optional, for Traefik routing if different from serverUrl)";
-          };
-
           agent = {
             enable = lib.mkOption {
               type = lib.types.bool;
@@ -253,9 +236,6 @@
             inputs,
             ...
           }:
-          let
-            serverUrlParsed = builtins.elemAt (builtins.match "https?://([^/:]+).*" settings.serverUrl) 0;
-          in
           {
             # Headscale OIDC client secret generator (only if OIDC enabled)
             clan.core.vars.generators.headscale = lib.mkIf settings.oidc.enable {
@@ -275,6 +255,20 @@
 
             # Headplane generators (only if headplane enabled)
             clan.core.vars.generators.headplane = lib.mkIf settings.headplane.enable {
+              files = {
+                cookieSecret = {
+                  owner = "headscale";
+                  group = "headscale";
+                };
+                oidcClientSecret = lib.mkIf settings.headplane.oidc.enable {
+                  owner = "headscale";
+                  group = "headscale";
+                };
+                agentPreauthKey = lib.mkIf settings.headplane.agent.enable {
+                  owner = "headscale";
+                  group = "headscale";
+                };
+              };
               prompts = {
                 cookieSecret = {
                   type = "line";
@@ -308,6 +302,14 @@
                 };
               };
             };
+
+            # Headplane module and overlay (only when enabled)
+            imports = lib.optionals settings.headplane.enable [
+              inputs.headplane.nixosModules.headplane
+            ];
+            nixpkgs.overlays = lib.optionals settings.headplane.enable [
+              inputs.headplane.overlays.default
+            ];
 
             services.headscale = {
               enable = true;
@@ -381,7 +383,9 @@
                 };
                 headscale = {
                   url = "http://127.0.0.1:8080";
-                  config_path = config.services.headscale.settings;
+                  # Note: NixOS headscale module doesn't expose its config file path directly
+                  # config_path is optional - headplane will work without it but some features
+                  # like config display in the UI will be unavailable
                 };
                 integration = {
                   proc.enabled = true;
@@ -399,39 +403,6 @@
               };
             };
 
-            # Nginx reverse proxy with ACME TLS (only when not using Traefik)
-            services.nginx = lib.mkIf (!settings.useTraefik) {
-              enable = true;
-              recommendedProxySettings = true;
-              recommendedTlsSettings = true;
-
-              virtualHosts.${serverUrlParsed} = {
-                enableACME = true;
-                forceSSL = true;
-
-                locations."/" = {
-                  proxyPass = "http://127.0.0.1:8080";
-                  proxyWebsockets = true;
-                  extraConfig = ''
-                    proxy_buffering off;
-                    proxy_set_header Host $host;
-                    proxy_set_header X-Real-IP $remote_addr;
-                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto $scheme;
-                  '';
-                };
-              };
-            };
-
-            # ACME/TLS (only when not using Traefik)
-            security.acme = lib.mkIf (!settings.useTraefik) {
-              acceptTerms = true;
-              defaults.email = settings.acmeEmail;
-            };
-
-            # Firewall
-            # When using Traefik: only open 3478 UDP for DERP STUN
-            # When not using Traefik: open 80/443 TCP and 3478 UDP for DERP STUN
             networking.firewall = lib.mkIf settings.openFirewall (
               if settings.useTraefik then
                 {
@@ -446,14 +417,6 @@
                   allowedUDPPorts = lib.mkIf settings.derp.serverEnabled [ 3478 ];
                 }
             );
-
-            # Assertion: document Traefik configuration requirement
-            assertions = [
-              {
-                assertion = !settings.useTraefik || builtins.hasAttr "@littlequartz/traefik" config.services;
-                message = "When useTraefik=true, you must configure the Traefik module (modules/@littlequartz/traefik) with routers and services for Headscale. Example: traefik.roles.server.routers.headscale = { rule = \"Host(`${serverUrlParsed}`)\"; service = \"headscale\"; entryPoints = [\"websecure\"]; }; and traefik.roles.server.services.headscale.loadBalancer.servers = [{ url = \"http://127.0.0.1:8080\"; }];";
-              }
-            ];
 
           };
       };

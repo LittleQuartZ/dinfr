@@ -54,6 +54,11 @@
 
       roles.client.machines.weaker = { };
       roles.client.machines.dangc = { };
+      roles.server.machines.dangc.settings = {
+        serverUrl = "https://hs.littlequartz.com";
+        baseDomain = "hs.com";
+        headplane.enable = true;
+      };
     };
 
     "@littlequartz/redis" = {
@@ -74,6 +79,31 @@
         redisEndpoint = "127.0.0.1:6379";
         enableApi = true;
         enableDocker = true;
+
+        routers = {
+          headscale = {
+            rule = "Host(`hs.littlequartz.com`)";
+            entryPoints = [
+              "websecure"
+            ];
+            service = "headscale";
+          };
+          headplane = {
+            rule = "Host(`hs.littlequartz.com`) && PathPrefix(`/admin`)";
+            entryPoints = [
+              "websecure"
+            ];
+            service = "headplane";
+          };
+        };
+        services = {
+          headscale.loadBalancer.servers = [
+            { url = "http://127.0.0.1:8080"; }
+          ];
+          headplane.loadBalancer.servers = [
+            { url = "http://127.0.0.1:3000"; }
+          ];
+        };
       };
     };
   };

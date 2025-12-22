@@ -143,11 +143,9 @@
               };
 
               dynamicConfigOptions = lib.mkMerge [
-                {
-                  http.routers = settings.routers;
-                  http.services = settings.services;
-                  http.middlewares = settings.middlewares;
-                }
+                (lib.mkIf (settings.routers != { }) { http.routers = settings.routers; })
+                (lib.mkIf (settings.services != { }) { http.services = settings.services; })
+                (lib.mkIf (settings.middlewares != { }) { http.middlewares = settings.middlewares; })
                 settings.extraDynamicConfig
               ];
             };
