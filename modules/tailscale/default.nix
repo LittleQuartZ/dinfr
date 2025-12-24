@@ -173,9 +173,9 @@
         };
 
         options.aclPolicyFile = lib.mkOption {
-          type = lib.types.nullOr lib.types.path;
+          type = lib.types.nullOr (lib.types.either lib.types.path lib.types.str);
           default = null;
-          description = "Path to ACL policy file (HuJSON format)";
+          description = "ACL policy file (path to file, or inline HuJSON content as string)";
         };
 
         options.headplane = {
@@ -360,7 +360,10 @@
                 };
 
                 policy = lib.mkIf (settings.aclPolicyFile != null) {
-                  path = settings.aclPolicyFile;
+                  path = if lib.types.path.check settings.aclPolicyFile then
+                    settings.aclPolicyFile
+                  else
+                    pkgs.writeText "headscale-acl.hujson" settings.aclPolicyFile;
                 };
 
                 oidc = lib.mkIf settings.oidc.enable {
